@@ -221,7 +221,7 @@ export const api = {
   },
 
   async getContractHealth(id: string): Promise<ContractHealth> {
-    const response = await fetch(apiUrl(`/api/contracts/${id}/health`));
+    const response = await fetch(`${API_URL}/api/contracts/${id}/health`);
     if (!response.ok) throw new Error('Failed to fetch contract health');
     return response.json();
   },
@@ -271,8 +271,23 @@ export const api = {
     const queryParams = new URLSearchParams();
     if (network) queryParams.append('network', network);
     const qs = queryParams.toString();
-    const response = await fetch(apiUrl(`/api/contracts/graph${qs ? `?${qs}` : ''}`));
+    const response = await fetch(`${API_URL}/api/contracts/graph${qs ? `?${qs}` : ''}`);
     if (!response.ok) throw new Error('Failed to fetch contract graph');
+    return response.json();
+  },
+
+  async getContractDependencies(id: string): Promise<any> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/dependencies`);
+    if (!response.ok) throw new Error('Failed to fetch contract dependencies');
+    return response.json();
+  },
+
+  async getTemplates(): Promise<Template[]> {
+    if (USE_MOCKS) {
+      return Promise.resolve([]);
+    }
+    const response = await fetch(`${API_URL}/api/templates`);
+    if (!response.ok) throw new Error('Failed to fetch templates');
     return response.json();
   },
 };
@@ -309,6 +324,8 @@ export interface GraphEdge {
 export interface GraphResponse {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
 export interface ContractExample {
   id: string;
   contract_id: string;
