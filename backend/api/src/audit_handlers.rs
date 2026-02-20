@@ -3,7 +3,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::{header, StatusCode},
+    http::header,
     response::{IntoResponse, Response},
     Json,
 };
@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::{
     checklist::all_checks,
     detector::detect_all,
+    error::{ApiError, ApiResult},
     scoring::{build_markdown_report, calculate_scores, score_badge},
     state::AppState,
 };
@@ -28,14 +29,14 @@ use shared::models::{
 pub async fn get_security_audit(
     State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     let audit: AuditRecord = sqlx::query_as(
         "SELECT * FROM security_audits WHERE contract_id = $1 ORDER BY audit_date DESC LIMIT 1",
     )
     .bind(contract_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    .map_err(|_| ApiError::not_found("AuditNotFound", format!("No security audit found for contract: {}", contract_id)))?;
 
     build_audit_response(&state, audit).await
 }
@@ -46,14 +47,14 @@ pub async fn get_security_audit(
 pub async fn get_security_audit_by_id(
     State(state): State<AppState>,
     Path((contract_id, audit_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     let audit: AuditRecord =
         sqlx::query_as("SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2")
             .bind(audit_id)
             .bind(contract_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|_| StatusCode::NOT_FOUND)?;
+            .map_err(|_| ApiError::not_found("AuditNotFound", format!("No audit found with ID: {}", audit_id)))?;
 
     build_audit_response(&state, audit).await
 }
@@ -64,14 +65,14 @@ pub async fn get_security_audit_by_id(
 pub async fn list_security_audits(
     State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
-) -> Result<Json<Vec<AuditRecord>>, StatusCode> {
+) -> ApiResult<Json<Vec<AuditRecord>>> {
     let audits: Vec<AuditRecord> = sqlx::query_as(
         "SELECT * FROM security_audits WHERE contract_id = $1 ORDER BY audit_date DESC",
     )
     .bind(contract_id)
     .fetch_all(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| ApiError::db_error("Failed to fetch security audits"))?;
 
     Ok(Json(audits))
 }
@@ -83,13 +84,13 @@ pub async fn create_security_audit(
     State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
     Json(req): Json<CreateAuditRequest>,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     // Verify contract exists
     let _: (Uuid,) = sqlx::query_as("SELECT id FROM contracts WHERE id = $1")
         .bind(contract_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| ApiError::not_found("ContractNotFound", format!("No contract found with ID: {}", contract_id)))?;
 
     // Run auto-detection if source provided
     let auto_results = req
@@ -110,7 +111,7 @@ pub async fn create_security_audit(
     .bind(&req.auditor)
     .fetch_one(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|_| ApiError::db_error("Failed to create security audit record"))?;
 
     // Seed all check rows
     let all = all_checks();
@@ -132,7 +133,7 @@ pub async fn create_security_audit(
         .bind(&evidence)
         .execute(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to seed audit check rows"))?;
     }
 
     // Calculate and persist initial score
@@ -143,13 +144,13 @@ pub async fn create_security_audit(
         .bind(audit.id)
         .execute(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to update audit score"))?;
 
     let audit: AuditRecord = sqlx::query_as("SELECT * FROM security_audits WHERE id = $1")
         .bind(audit.id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to reload audit record"))?;
 
     tracing::info!(
         audit_id = %audit.id,
@@ -168,11 +169,14 @@ pub async fn update_check(
     State(state): State<AppState>,
     Path((_contract_id, audit_id, check_id)): Path<(Uuid, Uuid, String)>,
     Json(req): Json<UpdateCheckRequest>,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     // Validate check_id exists in static checklist
     let all = all_checks();
     if !all.iter().any(|c| c.id == check_id) {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::bad_request(
+            "InvalidCheckId",
+            format!("Check ID '{}' does not exist in the audit checklist", check_id),
+        ));
     }
 
     let rows_affected = sqlx::query(
@@ -186,11 +190,14 @@ pub async fn update_check(
     .bind(&check_id)
     .execute(&state.db)
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    .map_err(|_| ApiError::db_error("Failed to update audit check"))?
     .rows_affected();
 
     if rows_affected == 0 {
-        return Err(StatusCode::NOT_FOUND);
+        return Err(ApiError::not_found(
+            "CheckNotFound",
+            format!("No check found with ID '{}' for audit: {}", check_id, audit_id),
+        ));
     }
 
     let checks = fetch_check_rows(&state, audit_id).await?;
@@ -201,13 +208,13 @@ pub async fn update_check(
         .bind(audit_id)
         .execute(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to update audit score"))?;
 
     let audit: AuditRecord = sqlx::query_as("SELECT * FROM security_audits WHERE id = $1")
         .bind(audit_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to reload audit record"))?;
 
     build_audit_response(&state, audit).await
 }
@@ -218,16 +225,19 @@ pub async fn update_check(
 pub async fn run_autocheck(
     State(state): State<AppState>,
     Path((_contract_id, audit_id)): Path<(Uuid, Uuid)>,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     let audit: AuditRecord = sqlx::query_as("SELECT * FROM security_audits WHERE id = $1")
         .bind(audit_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| ApiError::not_found("AuditNotFound", format!("No audit found with ID: {}", audit_id)))?;
 
     let source = audit.contract_source.as_deref().ok_or_else(|| {
         tracing::warn!(audit_id = %audit_id, "No source code stored for auto-check");
-        StatusCode::UNPROCESSABLE_ENTITY
+        ApiError::unprocessable(
+            "NoSourceCode",
+            "No source code is stored for this audit. Upload source code first.",
+        )
     })?;
 
     let auto_results = detect_all(source);
@@ -245,7 +255,7 @@ pub async fn run_autocheck(
         .bind(check_id)
         .execute(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to update auto-check results"))?;
     }
 
     let checks = fetch_check_rows(&state, audit_id).await?;
@@ -255,13 +265,13 @@ pub async fn run_autocheck(
         .bind(audit_id)
         .execute(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to update audit score"))?;
 
     let audit: AuditRecord = sqlx::query_as("SELECT * FROM security_audits WHERE id = $1")
         .bind(audit_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|_| ApiError::db_error("Failed to reload audit record"))?;
 
     tracing::info!(audit_id = %audit_id, checks = auto_results.len(), "Auto-check completed");
 
@@ -275,20 +285,20 @@ pub async fn export_audit_markdown(
     State(state): State<AppState>,
     Path((contract_id, audit_id)): Path<(Uuid, Uuid)>,
     Query(params): Query<ExportRequest>,
-) -> Result<Response, StatusCode> {
+) -> ApiResult<Response> {
     let audit: AuditRecord =
         sqlx::query_as("SELECT * FROM security_audits WHERE id = $1 AND contract_id = $2")
             .bind(audit_id)
             .bind(contract_id)
             .fetch_one(&state.db)
             .await
-            .map_err(|_| StatusCode::NOT_FOUND)?;
+            .map_err(|_| ApiError::not_found("AuditNotFound", format!("No audit found with ID: {}", audit_id)))?;
 
     let (contract_name,): (String,) = sqlx::query_as("SELECT name FROM contracts WHERE id = $1")
         .bind(contract_id)
         .fetch_one(&state.db)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+        .map_err(|_| ApiError::not_found("ContractNotFound", format!("No contract found with ID: {}", contract_id)))?;
 
     let checks = fetch_check_rows(&state, audit_id).await?;
     let (_, category_scores) = calculate_scores(&checks);
@@ -313,7 +323,7 @@ pub async fn export_audit_markdown(
     );
 
     Ok((
-        StatusCode::OK,
+        axum::http::StatusCode::OK,
         [
             (header::CONTENT_TYPE, "text/markdown; charset=utf-8"),
             (
@@ -332,7 +342,7 @@ pub async fn export_audit_markdown(
 pub async fn get_security_score(
     State(state): State<AppState>,
     Path(contract_id): Path<Uuid>,
-) -> Result<Json<ContractSecuritySummary>, StatusCode> {
+) -> ApiResult<Json<ContractSecuritySummary>> {
     let summary: ContractSecuritySummary = sqlx::query_as(
         r#"SELECT
                id          AS audit_id,
@@ -348,7 +358,7 @@ pub async fn get_security_score(
     .bind(contract_id)
     .fetch_one(&state.db)
     .await
-    .map_err(|_| StatusCode::NOT_FOUND)?;
+    .map_err(|_| ApiError::not_found("AuditNotFound", format!("No security audit found for contract: {}", contract_id)))?;
 
     Ok(Json(ContractSecuritySummary {
         score_badge: score_badge(summary.overall_score).to_string(),
@@ -396,18 +406,18 @@ pub async fn get_checklist_definition() -> Json<serde_json::Value> {
 async fn fetch_check_rows(
     state: &AppState,
     audit_id: Uuid,
-) -> Result<Vec<AuditCheckRow>, StatusCode> {
+) -> ApiResult<Vec<AuditCheckRow>> {
     sqlx::query_as("SELECT * FROM audit_checks WHERE audit_id = $1 ORDER BY check_id")
         .bind(audit_id)
         .fetch_all(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|_| ApiError::db_error("Failed to fetch audit check rows"))
 }
 
 async fn build_audit_response(
     state: &AppState,
     audit: AuditRecord,
-) -> Result<Json<AuditResponse>, StatusCode> {
+) -> ApiResult<Json<AuditResponse>> {
     let check_rows = fetch_check_rows(state, audit.id).await?;
     let (_, category_scores) = calculate_scores(&check_rows);
 
