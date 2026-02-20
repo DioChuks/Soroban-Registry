@@ -189,7 +189,7 @@ pub enum DeploymentEnvironment {
     Green,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "deployment_status", rename_all = "lowercase")]
 pub enum DeploymentStatus {
     Active,
@@ -455,4 +455,18 @@ pub struct ProposalWithSignatures {
     pub signatures: Vec<ProposalSignature>,
     /// How many more signatures are needed to reach the threshold
     pub signatures_needed: i32,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMigrationStatusRequest {
+    pub status: MigrationStatus,
+    pub log_output: Option<String>,
+}
+
+impl std::fmt::Display for DeploymentEnvironment {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+         match self {
+             DeploymentEnvironment::Blue => write!(f, "blue"),
+             DeploymentEnvironment::Green => write!(f, "green"),
+         }
+    }
 }
