@@ -8,12 +8,11 @@ mod benchmark_routes;
 mod cache;
 mod cache_benchmark;
 mod checklist;
+mod contract_history_handlers;
+mod contract_history_routes;
 mod detector;
 mod error;
 mod handlers;
-mod multisig_handlers;
-mod multisig_routes;
-mod models;
 mod rate_limit;
 mod routes;
 mod scoring;
@@ -81,6 +80,9 @@ async fn main() -> Result<()> {
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
         .merge(routes::migration_routes())
+        .merge(routes::canary_routes())
+        .merge(routes::ab_test_routes())
+        .merge(routes::performance_routes())
         .merge(multisig_routes::multisig_routes())
         .merge(audit_routes::audit_routes())
         .merge(benchmark_routes::benchmark_routes())
