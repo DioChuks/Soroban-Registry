@@ -69,7 +69,11 @@ pub enum Commands {
         #[arg(long)]
         description: Option<String>,
 
-        /// Contract category (e.g. token, defi, nft)
+        /// Network (mainnet, testnet, futurenet)
+        #[arg(long, default_value = "Testnet")]
+        network: String,
+
+        /// Category
         #[arg(long)]
         category: Option<String>,
 
@@ -243,6 +247,12 @@ pub enum SlaCommands {
         /// Contract identifier
         id: String,
     },
+	     /// Show the trust score and breakdown for a contract
+    TrustScore {
+        /// Contract UUID to score
+        contract_id: String,
+    },
+
 }
 
 /// Sub-commands for the `multisig` group
@@ -326,6 +336,21 @@ pub enum PatchCommands {
         contract_id: String,
         #[arg(long)]
         patch_id: String,
+    },
+
+    /// Manage contract dependencies
+    Deps {
+        #[command(subcommand)]
+        command: DepsCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DepsCommands {
+    /// List dependencies for a contract
+    List {
+        /// Contract ID
+        contract_id: String,
     },
 }
 
@@ -421,6 +446,13 @@ async fn main() -> Result<()> {
                 commands::patch_apply(&cli.api_url, &contract_id, &patch_id).await?;
             }
         },
+
+		  Commands::TrustScore { contract_id } => {
+            log::debug!("Command: trust-score | contract_id={}", contract_id);
+            commands::trust_score(&cli.api_url, &contract_id, network).await?;
+        },
+
+        // ── Multi-sig commands (issue #47) ───────────────────────────────────
         Commands::Multisig { action } => match action {
             MultisigCommands::CreatePolicy { name, threshold, signers, expiry_secs, created_by } => {
                 let signer_vec: Vec<String> =
@@ -508,6 +540,9 @@ async fn main() -> Result<()> {
             SlaCommands::Status { id } => {
                 log::debug!("Command: sla status | id={}", id);
                 commands::sla_status(&id)?;
+        Commands::Deps { command } => match command {
+            DepsCommands::List { contract_id } => {
+                commands::deps_list(&cli.api_url, &contract_id).await?;
             }
         },
     }

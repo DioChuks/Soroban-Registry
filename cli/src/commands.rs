@@ -258,6 +258,7 @@ pub async fn list(api_url: &str, limit: usize, network: Network) -> Result<()> {
     Ok(())
 }
 
+
 pub async fn migrate(
     api_url: &str,
     contract_id: &str,
@@ -546,6 +547,76 @@ pub async fn patch_create(
     Ok(())
 }
 
+/// GET /api/contracts/:id/trust-score
+pub async fn trust_score(api_url: &str, contract_id: &str, network: Network) -> Result<()> {
+    let url = format!("{}/api/contracts/{}/trust-score", api_url, contract_id);
+    log::debug!("GET {}", url);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .query(&[("network", network.to_string())])
+        .send()
+        .await
+        .context("Failed to reach registry API")?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Failed to get trust score ({}): {}", status, body);
+    }
+
+    let data: serde_json::Value = resp.json().await.context("Failed to parse trust score response")?;
+
+    // ── Header ────────────────────────────────────────────────────────────────
+    let name       = data["contract_name"].as_str().unwrap_or("Unknown");
+    let score      = data["score"].as_f64().unwrap_or(0.0);
+    let badge      = data["badge"].as_str().unwrap_or("Bronze");
+    let badge_icon = data["badge_icon"].as_str().unwrap_or("🥉");
+    let summary    = data["summary"].as_str().unwrap_or("");
+
+    println!("\n{}", "─".repeat(56));
+    println!("  Trust Score — {}", name.bold());
+    println!("{}", "─".repeat(56));
+    println!("  Score : {:.0}/100", score);
+    println!("  Badge : {} {}", badge_icon, badge.bold());
+    println!("  {}",  summary);
+    println!("{}", "─".repeat(56));
+
+    // ── Factor breakdown ──────────────────────────────────────────────────────
+    println!("\n  {} Factor Breakdown\n", "📊".bold());
+
+    if let Some(factors) = data["factors"].as_array() {
+        for factor in factors {
+            let fname   = factor["name"].as_str().unwrap_or("");
+            let earned  = factor["points_earned"].as_f64().unwrap_or(0.0);
+            let max     = factor["points_max"].as_f64().unwrap_or(0.0);
+            let explain = factor["explanation"].as_str().unwrap_or("");
+
+            // Mini progress bar (10 chars)
+            let filled = ((earned / max) * 10.0).round() as usize;
+            let filled = filled.min(10);
+            let bar = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
+
+            println!("  {:<28} [{bar}] {:.0}/{:.0}", fname, earned, max);
+            println!("    {}", explain.dimmed());
+        }
+    }
+
+    // ── Weight documentation ──────────────────────────────────────────────────
+    println!("\n  {} Score Weights\n", "⚖️".bold());
+    if let Some(weights) = data["weights"].as_object() {
+        for (k, v) in weights {
+            println!("  {:<22} {:.0} pts max", k, v.as_f64().unwrap_or(0.0));
+        }
+    }
+
+    let computed_at = data["computed_at"].as_str().unwrap_or("");
+    println!("\n  Computed at: {}\n", computed_at.dimmed());
+
+    Ok(())
+}
+
 pub async fn patch_notify(api_url: &str, patch_id: &str) -> Result<()> {
     println!("\n{}", "Identifying vulnerable contracts...".bold().cyan());
 
@@ -709,11 +780,70 @@ pub async fn profile(
         }
     }
 
+pub async fn deps_list(api_url: &str, contract_id: &str) -> Result<()> {
+    let client = reqwest::Client::new();
+    let url = format!("{}/api/contracts/{}/dependencies", api_url, contract_id);
+
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .context("Failed to fetch contract dependencies")?;
+
+    if !response.status().is_success() {
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+             anyhow::bail!("Contract not found");
+        }
+        anyhow::bail!("Failed to fetch dependencies: {}", response.status());
+    }
+
+    let items: serde_json::Value = response.json().await?;
+    let tree = items.as_array().context("Invalid response format")?;
+
+    println!("\n{}", "Dependency Tree:".bold().cyan());
+    println!("{}", "=".repeat(80).cyan());
+
+    if tree.is_empty() {
+        println!("{}", "No dependencies found.".yellow());
+        return Ok(());
+    }
+
+    fn print_tree(nodes: &[serde_json::Value], prefix: &str, is_last: bool) {
+        for (i, node) in nodes.iter().enumerate() {
+            let name = node["name"].as_str().unwrap_or("Unknown");
+            let constraint = node["constraint_to_parent"].as_str().unwrap_or("*");
+            let contract_id = node["contract_id"].as_str().unwrap_or("");
+            
+            let is_node_last = i == nodes.len() - 1;
+            let marker = if is_node_last { "└──" } else { "├──" };
+            
+            println!(
+                "{}{} {} ({}) {}", 
+                prefix, 
+                marker.bright_black(), 
+                name.bold(), 
+                constraint.cyan(),
+                if contract_id == "unknown" { "[Unresolved]".red() } else { "".normal() }
+            );
+
+            if let Some(children) = node["dependencies"].as_array() {
+                if !children.is_empty() {
+                     let new_prefix = format!("{}{}", prefix, if is_node_last { "    " } else { "│   " });
+                     print_tree(children, &new_prefix, true);
+                }
+            }
+        }
+    }
+
+    print_tree(tree, "", true);
+
+
     println!("\n{}", "=".repeat(80).cyan());
     println!();
 
     Ok(())
 }
+
 
 pub async fn run_tests(
     test_file: &str,
@@ -827,86 +957,3 @@ pub async fn run_tests(
     Ok(())
 }
 
-pub fn sla_record(id: &str, uptime: f64, latency: f64, error_rate: f64) -> Result<()> {
-    println!("\n{}", "Recording SLA metrics...".bold().cyan());
-
-    let mut mgr = SlaManager::new();
-    mgr.record(id, uptime, latency, error_rate);
-
-    println!("{}", "✓ Metrics recorded!".green().bold());
-    println!("  {}: {}", "Contract".bold(), id.bright_black());
-    println!("  {}: {}%", "Uptime".bold(), uptime);
-    println!("  {}: {}ms", "Latency".bold(), latency);
-    println!("  {}: {}%\n", "Error Rate".bold(), error_rate);
-
-    let status = mgr.evaluate(id)?;
-    if !status.compliant {
-        println!("  {} {}", "⚠".red(), "SLA VIOLATION DETECTED".red().bold());
-        for v in &status.violations {
-            println!(
-                "    {} {} — actual: {:.2}, target: {:.2}",
-                "✗".red(),
-                v.metric.bold(),
-                v.actual,
-                v.target
-            );
-        }
-        println!(
-            "  {}: ${:.2}\n",
-            "Penalty Accrued".bold(),
-            status.penalty_accrued
-        );
-    } else {
-        println!("  {}\n", "✓ All SLA targets met".green());
-    }
-
-    Ok(())
-}
-
-pub fn sla_status(id: &str) -> Result<()> {
-    println!("\n{}", "SLA Dashboard".bold().cyan());
-    println!("{}", "═".repeat(60).cyan());
-
-    let mut mgr = SlaManager::new();
-    mgr.record(id, 0.0, 0.0, 0.0);
-    let status = mgr.evaluate(id)?;
-
-    println!("  {}: {}", "Contract".bold(), id.bright_black());
-    println!("  {}: {}", "Records".bold(), status.total_records);
-    println!(
-        "  {}: {}",
-        "Status".bold(),
-        if status.compliant {
-            "COMPLIANT".green().bold()
-        } else {
-            "NON-COMPLIANT".red().bold()
-        }
-    );
-
-    println!("\n  {}", "Targets".bold().underline());
-    println!(
-        "    Uptime    ≥ {}%  |  Latency ≤ {}ms  |  Errors ≤ {}%",
-        mgr.targets.min_uptime, mgr.targets.max_latency_ms, mgr.targets.max_error_rate
-    );
-
-    if !status.violations.is_empty() {
-        println!("\n  {} {}", "⚠".red(), "Active Violations".red().bold());
-        for v in &status.violations {
-            println!(
-                "    {} {} — actual: {:.2}, target: {:.2}",
-                "✗".red(),
-                v.metric.bold(),
-                v.actual,
-                v.target
-            );
-        }
-    }
-
-    println!("\n  {}", "Financials".bold().underline());
-    println!("    Penalties: ${:.2}", status.penalty_accrued);
-    println!("    Credits:   ${:.2}", status.credits_issued);
-
-    println!("\n{}\n", "═".repeat(60).cyan());
-
-    Ok(())
-}
