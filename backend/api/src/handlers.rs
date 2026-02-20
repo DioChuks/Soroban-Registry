@@ -202,9 +202,6 @@ pub async fn list_contracts(
     }
 
     response
-    Ok(Json(PaginatedResponse::new(
-        contracts, total, page, page_size,
-    )))
 }
 
 pub async fn get_contract(
@@ -991,16 +988,21 @@ pub async fn get_contract_state(
 ) -> ApiResult<Json<serde_json::Value>> {
     let use_cache = params.cache.as_deref() == Some("on");
 
+    // Try cache first if enabled
     if use_cache {
-        if let Some(cached) = state.cache.get(&contract_id, &key).await {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&cached) {
+        let (cached_value, was_hit) = state.cache.get(&contract_id, &key).await;
+        if was_hit && cached_value.is_some() {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&cached_value.unwrap()) {
                  return Ok(Json(val));
             }
         }
     }
 
-    let start = std::time::Instant::now();
-    tokio::time::sleep(Duration::from_millis(100)).await; 
+    // Cache miss or cache disabled - fetch fresh value
+    let fetch_start = std::time::Instant::now();
+    tokio::time::sleep(Duration::from_millis(100)).await; // Simulate contract read latency
+    let fetch_duration = fetch_start.elapsed();
+    
     let value = serde_json::json!({ 
         "contract_id": contract_id,
         "key": key,
@@ -1008,9 +1010,13 @@ pub async fn get_contract_state(
         "fetched_at": &chrono::Utc::now().to_rfc3339() 
     });
     
+    // Always record latency for baseline metrics
     if use_cache {
-        state.cache.record_uncached_latency(start.elapsed());
+        // Record the full miss latency for metrics
         state.cache.put(&contract_id, &key, value.to_string(), None).await;
+    } else {
+        // Record as uncached baseline when cache=off
+        state.cache.record_uncached_latency(fetch_duration);
     }
 
     Ok(Json(value))
@@ -1032,17 +1038,26 @@ pub async fn get_cache_stats(
     let metrics = state.cache.metrics();
     let hits = metrics.hits.load(std::sync::atomic::Ordering::Relaxed);
     let misses = metrics.misses.load(std::sync::atomic::Ordering::Relaxed);
-    let cached_count = metrics.cached_count.load(std::sync::atomic::Ordering::Relaxed);
+    let cached_hit_count = metrics.cached_hit_count.load(std::sync::atomic::Ordering::Relaxed);
+    let cache_miss_count = metrics.cache_miss_count.load(std::sync::atomic::Ordering::Relaxed);
     
     Ok(Json(serde_json::json!({
         "metrics": {
             "hit_rate_percent": metrics.hit_rate(),
-            "avg_cached_latency_us": metrics.avg_cached_latency(),
+            "avg_cached_hit_latency_us": metrics.avg_cached_hit_latency(),
+            "avg_cache_miss_latency_us": metrics.avg_cache_miss_latency(),
             "avg_uncached_latency_us": metrics.avg_uncached_latency(),
             "improvement_factor": metrics.improvement_factor(),
             "hits": hits,
             "misses": misses,
-            "cached_entries_count": cached_count,
+            "cached_hit_entries_count": cached_hit_count,
+            "cache_miss_entries_count": cache_miss_count,
+        },
+        "config": {
+            "enabled": state.cache.config().enabled,
+            "policy": format!("{:?}", state.cache.config().policy),
+            "ttl_seconds": state.cache.config().global_ttl.as_secs(),
+            "max_capacity": state.cache.config().max_capacity,
         }
     })))
 }

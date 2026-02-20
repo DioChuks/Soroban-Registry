@@ -13,10 +13,11 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(db: PgPool) -> Self {
+        let config = CacheConfig::from_env();
         Self {
             db,
             started_at: Instant::now(),
-            cache: Arc::new(CacheLayer::new(CacheConfig::default())), // Default config
+            cache: Arc::new(CacheLayer::new(config)),
         }
     }
 }

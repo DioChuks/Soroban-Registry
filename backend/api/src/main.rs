@@ -6,6 +6,7 @@ mod benchmark_engine;
 mod benchmark_handlers;
 mod benchmark_routes;
 mod cache;
+mod cache_benchmark;
 mod checklist;
 mod detector;
 mod error;
