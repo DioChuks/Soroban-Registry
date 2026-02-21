@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use prometheus::{
-    histogram_opts, opts, Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounter, IntCounterVec,
+    opts, Encoder, GaugeVec, HistogramOpts, HistogramVec, IntCounter, IntCounterVec,
     IntGauge, IntGaugeVec, Registry, TextEncoder,
 };
 
