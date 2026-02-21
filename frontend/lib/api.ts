@@ -54,7 +54,6 @@ export interface ContractHealth {
   updated_at: string;
 }
 
-/** Contract interaction (invocation) — Issue #46 */
 export interface ContractInteractionResponse {
   id: string;
   account: string | null;
