@@ -673,32 +673,14 @@ pub fn resolve_network(cli_flag: Option<String>) -> Result<Network> {
             let config: ConfigFile =
                 toml::from_str(&content).with_context(|| "Failed to parse config file")?;
 
-        let comparisons = profiler::compare_profiles(&baseline, &profile_data);
-
-        println!("\n{}", "Comparison Results:".bold().yellow());
-        for comp in comparisons.iter().take(10) {
-            let sign = if comp.time_diff_ns > 0 { "+" } else { "" };
-            println!(
-                "{}: {} ({}{:.2}%, {:.2}ms → {:.2}ms)",
-                comp.function.bold(),
-                comp.status,
-                sign,
-                comp.time_diff_percent,
-                comp.baseline_time.as_secs_f64() * 1000.0,
-                comp.current_time.as_secs_f64() * 1000.0
-            );
+            if let Some(net_str) = config.network {
+                return net_str.parse::<Network>();
+            }
         }
     }
 
-    if show_recommendations {
-        let recommendations = profiler::generate_recommendations(&profile_data);
-        println!("\n{}", "Recommendations:".bold().magenta());
-        for (i, rec) in recommendations.iter().enumerate() {
-            println!("{}. {}", i + 1, rec);
-        }
-    }
-
-    Ok(())
+    // 3. Default
+    Ok(Network::Testnet)
 }
 
 pub async fn deps_list(api_url: &str, contract_id: &str) -> Result<()> {
