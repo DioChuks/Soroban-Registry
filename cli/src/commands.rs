@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use crate::config::config_file_path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Network {
