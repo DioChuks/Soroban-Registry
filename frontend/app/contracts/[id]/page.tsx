@@ -21,6 +21,7 @@ import { useAnalytics } from "@/hooks/useAnalytics";
 import { useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import FormalVerificationPanel from "@/components/FormalVerificationPanel";
+import InteractionHistorySection from "@/components/InteractionHistorySection";
 import Navbar from "@/components/Navbar";
 import MaintenanceBanner from "@/components/MaintenanceBanner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -205,8 +206,13 @@ function ContractDetailsContent() {
             <ExampleGallery contractId={contract.id} />
           </section>
 
+<<<<<<< feature/issue-46-add-contract-interaction-history-tracking
+          {/* Interaction History (Issue #46) */}
+          <InteractionHistorySection contractId={contract.id} />
+=======
           {/* Custom Metrics */}
           <CustomMetricsPanel contractId={contract.id} />
+>>>>>>> main
         </div>
 
         {/* Sidebar */}
