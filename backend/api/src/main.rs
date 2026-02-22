@@ -13,6 +13,7 @@ mod metrics;
 // mod resource_handlers;
 // mod resource_tracking;
 mod analytics;
+mod custom_metrics_handlers;
 mod breaking_changes;
 mod deprecation_handlers;
 

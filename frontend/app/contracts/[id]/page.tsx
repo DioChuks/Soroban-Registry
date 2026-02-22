@@ -21,6 +21,7 @@ import FormalVerificationPanel from "@/components/FormalVerificationPanel";
 import Navbar from "@/components/Navbar";
 import MaintenanceBanner from "@/components/MaintenanceBanner";
 import { useQueryClient } from "@tanstack/react-query";
+import CustomMetricsPanel from "@/components/CustomMetricsPanel";
 import DeprecationBanner from "@/components/DeprecationBanner";
 
 const NETWORKS: Network[] = ["mainnet", "testnet", "futurenet"];
@@ -191,6 +192,9 @@ function ContractDetailsContent() {
           <section>
             <ExampleGallery contractId={contract.id} />
           </section>
+
+          {/* Custom Metrics */}
+          <CustomMetricsPanel contractId={contract.id} />
         </div>
 
         {/* Sidebar */}
