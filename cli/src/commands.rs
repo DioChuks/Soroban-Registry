@@ -1500,8 +1500,6 @@ pub async fn scan_deps(
 #[cfg(test)]
 mod tests_network {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
 
     #[test]
     fn test_network_parsing() {
