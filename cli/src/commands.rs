@@ -22,6 +22,13 @@ use crate::profiler;
 use crate::sla::SlaManager;
 use crate::test_framework;
 
+pub fn generate_flame_graph_file(
+    profile: &profiler::ProfileData,
+    output_path: &str,
+) -> Result<()> {
+    profiler::generate_flame_graph(profile, Path::new(output_path))
+}
+
 pub async fn search(
     api_url: &str,
     query: &str,
@@ -163,7 +170,7 @@ pub async fn upgrade_analyze(api_url: &str, old_id: &str, new_id: &str, json_out
 }
 
 #[cfg(test)]
-mod tests {
+mod upgrade_analyze_tests {
     use super::*;
     use std::io::Write;
     use tempfile::tempdir;
@@ -1254,10 +1261,36 @@ pub async fn scan_deps(
 }
 
 #[cfg(test)]
-mod tests {
+mod flamegraph_and_network_tests {
     use super::*;
-    use std::io::Write;
-    use tempfile::NamedTempFile;
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    fn sample_profile() -> profiler::ProfileData {
+        let mut functions = HashMap::new();
+        functions.insert(
+            "main".to_string(),
+            profiler::FunctionProfile {
+                name: "main".to_string(),
+                total_time: Duration::from_millis(10),
+                call_count: 1,
+                avg_time: Duration::from_millis(10),
+                min_time: Duration::from_millis(10),
+                max_time: Duration::from_millis(10),
+                children: vec![],
+            },
+        );
+
+        profiler::ProfileData {
+            contract_path: "contract.rs".to_string(),
+            method: Some("main".to_string()),
+            timestamp: "2026-01-01T00:00:00Z".to_string(),
+            total_duration: Duration::from_millis(10),
+            functions,
+            call_stack: vec![],
+            overhead_percent: 0.0,
+        }
+    }
 
     #[test]
     fn test_network_parsing() {
@@ -1268,9 +1301,32 @@ mod tests {
         assert!("invalid".parse::<Network>().is_err());
     }
 
-    // Note: Integration tests involving file system would require mocking or temporary files.
-    // Given the constraints and the environment, we focus on unit tests for parsing here.
-    // `resolve_network` with file interaction is harder to test in isolation without dependency injection or mocking `dirs` / `fs`.
+    #[test]
+    fn generate_flame_graph_file_writes_svg_for_valid_path() {
+        let profile = sample_profile();
+        let temp_dir = tempfile::tempdir().expect("failed to create temp directory");
+        let output_path = temp_dir.path().join("flamegraph-output.svg");
+        let output_path_str = output_path.to_string_lossy().into_owned();
+
+        generate_flame_graph_file(&profile, &output_path_str)
+            .expect("expected flame graph generation to succeed");
+        assert!(output_path.exists(), "expected output file to exist");
+    }
+
+    #[test]
+    fn generate_flame_graph_file_returns_error_for_invalid_path() {
+        let profile = sample_profile();
+        let temp_dir = tempfile::tempdir().expect("failed to create temp directory");
+        let invalid_output = temp_dir.path().join("missing-dir").join("flamegraph-output.svg");
+        let invalid_output_str = invalid_output.to_string_lossy().into_owned();
+
+        let err = generate_flame_graph_file(&profile, &invalid_output_str)
+            .expect_err("expected flame graph generation to fail for invalid path");
+        assert!(
+            err.to_string().contains("Failed to write flame graph"),
+            "unexpected error: {err}"
+        );
+    }
 }
 /// Validate a contract function call for type safety
 pub async fn validate_call(
