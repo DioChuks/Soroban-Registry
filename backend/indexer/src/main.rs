@@ -12,7 +12,6 @@
 /// - Handles RPC failures with exponential backoff
 /// - Detects and recovers from ledger reorgs
 /// - Provides structured logging for observability
-
 mod backoff;
 mod config;
 mod db;
@@ -77,7 +76,11 @@ impl IndexerService {
         );
 
         // Load initial state
-        let mut state = match self.state_manager.load_state(&self.config.network.network).await {
+        let mut state = match self
+            .state_manager
+            .load_state(&self.config.network.network)
+            .await
+        {
             Ok(s) => {
                 info!(
                     "Loaded indexer state: last_indexed_ledger={}",
@@ -330,10 +333,10 @@ mod signal_support {
             {
                 use tokio::signal::unix::{signal, SignalKind};
 
-                let mut sigterm = signal(SignalKind::terminate())
-                    .expect("Failed to register SIGTERM handler");
-                let mut sigint = signal(SignalKind::interrupt())
-                    .expect("Failed to register SIGINT handler");
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("Failed to register SIGTERM handler");
+                let mut sigint =
+                    signal(SignalKind::interrupt()).expect("Failed to register SIGINT handler");
 
                 tokio::select! {
                     _ = sigterm.recv() => {
