@@ -1,3 +1,4 @@
+use crate::validation::extractors::ValidatedJson;
 use axum::{
     extract::{
         rejection::{JsonRejection, QueryRejection},
@@ -11,11 +12,12 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use shared::{
-    AnalyticsEventType, Contract, ContractAnalyticsResponse, ContractGetResponse,
-    ContractInteractionResponse, ContractSearchParams, ContractVersion,
+    AnalyticsEventType, ChangePublisherRequest, Contract, ContractAnalyticsResponse,
+    ContractGetResponse, ContractInteractionResponse, ContractSearchParams, ContractVersion,
     CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
     DeploymentStats, InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network,
     NetworkConfig, PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser,
+    UpdateContractMetadataRequest, UpdateContractStatusRequest, VerifyRequest,
 };
 use std::time::Duration;
 use uuid::Uuid;
@@ -86,28 +88,6 @@ pub struct AuditLogQuery {
 
 fn default_audit_limit() -> i64 {
     100
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct UpdateContractMetadataRequest {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub category: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub user_id: Option<Uuid>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct ChangePublisherRequest {
-    pub publisher_address: String,
-    pub user_id: Option<Uuid>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-pub struct UpdateContractStatusRequest {
-    pub status: String,
-    pub error_message: Option<String>,
-    pub user_id: Option<Uuid>,
 }
 
 fn extract_ip_address(headers: &HeaderMap) -> String {
@@ -442,10 +422,8 @@ pub async fn get_contract_versions(
 pub async fn create_contract_version(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    payload: Result<Json<CreateContractVersionRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<CreateContractVersionRequest>,
 ) -> ApiResult<Json<ContractVersion>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
-
     let (contract_uuid, contract_id) = fetch_contract_identity(&state, &id).await?;
     if !req.contract_id.trim().is_empty() && req.contract_id != contract_id {
         return Err(ApiError::bad_request(
@@ -723,10 +701,8 @@ async fn fetch_contract_identity(state: &AppState, id: &str) -> ApiResult<(Uuid,
 pub async fn publish_contract(
     State(state): State<AppState>,
     headers: HeaderMap,
-    payload: Result<Json<PublishRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<PublishRequest>,
 ) -> ApiResult<Json<Contract>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
-
     crate::validation::validate_contract_id(&req.contract_id)
         .map_err(|e| ApiError::bad_request("InvalidContractId", e))?;
 
@@ -855,10 +831,8 @@ pub async fn publish_contract(
 
 pub async fn create_publisher(
     State(state): State<AppState>,
-    payload: Result<Json<Publisher>, JsonRejection>,
+    ValidatedJson(publisher): ValidatedJson<Publisher>,
 ) -> ApiResult<Json<Publisher>> {
-    let Json(publisher) = payload.map_err(map_json_rejection)?;
-
     let created: Publisher = sqlx::query_as(
         "INSERT INTO publishers (stellar_address, username, email, github_url, website)
          VALUES ($1, $2, $3, $4, $5)
@@ -1217,10 +1191,8 @@ pub async fn get_trending_contracts() -> impl IntoResponse {
 pub async fn verify_contract(
     State(state): State<AppState>,
     headers: HeaderMap,
-    payload: Result<Json<shared::VerifyRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<VerifyRequest>,
 ) -> ApiResult<Json<Value>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
-
     let contract: Contract = sqlx::query_as(
         "SELECT * FROM contracts WHERE contract_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
@@ -1321,9 +1293,8 @@ pub async fn update_contract_metadata(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
-    payload: Result<Json<UpdateContractMetadataRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<UpdateContractMetadataRequest>,
 ) -> ApiResult<Json<Contract>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
     if req.name.is_none()
         && req.description.is_none()
         && req.category.is_none()
@@ -1430,9 +1401,8 @@ pub async fn change_contract_publisher(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
-    payload: Result<Json<ChangePublisherRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<ChangePublisherRequest>,
 ) -> ApiResult<Json<Contract>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
     let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
         ApiError::bad_request(
             "InvalidContractId",
@@ -1507,9 +1477,8 @@ pub async fn update_contract_status(
     State(state): State<AppState>,
     Path(id): Path<String>,
     headers: HeaderMap,
-    payload: Result<Json<UpdateContractStatusRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<UpdateContractStatusRequest>,
 ) -> ApiResult<Json<Value>> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
     let normalized_status = req.status.to_ascii_lowercase();
     if normalized_status != "pending"
         && normalized_status != "verified"
@@ -1800,10 +1769,8 @@ pub async fn get_contract_interactions(
 pub async fn post_contract_interaction(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    payload: Result<Json<CreateInteractionRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<CreateInteractionRequest>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
-
     let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
         ApiError::bad_request(
             "InvalidContractId",
@@ -1862,10 +1829,8 @@ pub async fn post_contract_interaction(
 pub async fn post_contract_interactions_batch(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    payload: Result<Json<CreateInteractionBatchRequest>, JsonRejection>,
+    ValidatedJson(req): ValidatedJson<CreateInteractionBatchRequest>,
 ) -> ApiResult<(StatusCode, Json<serde_json::Value>)> {
-    let Json(req) = payload.map_err(map_json_rejection)?;
-
     let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
         ApiError::bad_request(
             "InvalidContractId",

@@ -211,6 +211,28 @@ pub struct PublishRequest {
     pub dependencies: Vec<DependencyDeclaration>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateContractMetadataRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePublisherRequest {
+    pub publisher_address: String,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateContractStatusRequest {
+    pub status: String,
+    pub error_message: Option<String>,
+    pub user_id: Option<Uuid>,
+}
+
 /// Request to create a new contract version with ABI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateContractVersionRequest {
