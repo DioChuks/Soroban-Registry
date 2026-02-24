@@ -5,8 +5,11 @@ mod analytics;
 mod breaking_changes;
 mod cache;
 mod compatibility_testing_handlers;
+mod db_monitoring;
+
+mod activity_feed_handlers;
+mod activity_feed_routes;
 mod custom_metrics_handlers;
-mod migration_handlers;
 mod dependency;
 mod deprecation_handlers;
 mod error;
@@ -17,11 +20,12 @@ pub mod health_monitor;
 mod health_tests;
 mod metrics;
 mod metrics_handler;
+mod migration_handlers;
 mod rate_limit;
-pub mod request_tracing;
-mod routes;
 mod release_notes_handlers;
 mod release_notes_routes;
+pub mod request_tracing;
+mod routes;
 pub mod signing_handlers;
 mod state;
 mod type_safety;
@@ -54,11 +58,28 @@ async fn main() -> Result<()> {
     // Initialize structured JSON tracing (ELK/Splunk compatible)
     request_tracing::init_json_tracing();
 
-    // Database connection
+    // Database connection with dynamic pool size
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
+    let logical_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
+    let default_max_pool = (logical_cores * 2).max(10);
+    let max_pool_size = std::env::var("DB_MAX_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(default_max_pool as u32);
+
+    tracing::info!(
+        max_pool_size = max_pool_size,
+        logical_cores = logical_cores,
+        "Initializing database connection pool"
+    );
+
     let pool = PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(max_pool_size)
+        .acquire_timeout(std::time::Duration::from_secs(30))
         .connect(&database_url)
         .await?;
 
@@ -84,7 +105,10 @@ async fn main() -> Result<()> {
     // Create app state
     let is_shutting_down = Arc::new(AtomicBool::new(false));
     let state = AppState::new(pool.clone(), registry, is_shutting_down.clone());
-    
+
+    // Spawn the background DB and cache monitoring task
+    db_monitoring::spawn_db_monitoring_task(pool.clone(), state.cache.clone());
+
     // Warm up the cache
     state.cache.clone().warm_up(pool.clone());
 
@@ -106,6 +130,7 @@ async fn main() -> Result<()> {
         .merge(routes::migration_routes())
         .merge(routes::compatibility_dashboard_routes())
         .merge(release_notes_routes::release_notes_routes())
+        .nest("/api", activity_feed_routes::routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(request_tracing::tracing_middleware))
         .layer(middleware::from_fn_with_state(
@@ -177,5 +202,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-
