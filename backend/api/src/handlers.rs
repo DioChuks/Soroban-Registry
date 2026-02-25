@@ -13,12 +13,12 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use shared::{
     pagination::Cursor, AnalyticsEventType, ChangePublisherRequest, Contract,
-    ContractAnalyticsResponse, ContractGetResponse, ContractInteractionResponse,
-    ContractSearchParams, ContractVersion, CreateContractVersionRequest,
-    CreateInteractionBatchRequest, CreateInteractionRequest, DeploymentStats,
-    InteractionTimeSeriesPoint, InteractionTimeSeriesResponse, InteractionsListResponse,
-    InteractionsQueryParams, InteractorStats, Network, NetworkConfig, PaginatedResponse,
-    PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
+    ContractAnalyticsResponse, ContractChangelogEntry, ContractChangelogResponse,
+    ContractGetResponse, ContractInteractionResponse, ContractSearchParams, ContractVersion,
+    CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
+    DeploymentStats, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
+    InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
+    PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
     UpdateContractMetadataRequest, UpdateContractStatusRequest, VerifyRequest,
 };
 use std::time::Duration;
@@ -2381,14 +2381,14 @@ pub async fn get_contract_interactions(
         None
     };
 
-    Ok(Json(InteractionsListResponse {
+    Ok(Json(json!(InteractionsListResponse {
         items,
         total,
         limit,
         offset,
         next_cursor,
         prev_cursor,
-    }))
+    })))
 }
 
 /// POST /api/contracts/:id/interactions — ingest one interaction.
