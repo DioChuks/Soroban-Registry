@@ -211,6 +211,28 @@ pub struct PublishRequest {
     pub dependencies: Vec<DependencyDeclaration>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateContractMetadataRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChangePublisherRequest {
+    pub publisher_address: String,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateContractStatusRequest {
+    pub status: String,
+    pub error_message: Option<String>,
+    pub user_id: Option<Uuid>,
+}
+
 /// Request to create a new contract version with ABI
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateContractVersionRequest {
@@ -366,6 +388,7 @@ pub struct ContractSearchParams {
     pub limit: Option<i64>,
     pub sort_by: Option<SortBy>,
     pub sort_order: Option<SortOrder>,
+    pub cursor: Option<String>,
 }
 
 /// Pagination params for contract versions (limit/offset style)
@@ -388,6 +411,8 @@ pub struct PaginatedVersionResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    pub next_cursor: Option<String>,
+    pub prev_cursor: Option<String>,
 }
 
 /// Paginated response
@@ -399,6 +424,8 @@ pub struct PaginatedResponse<T> {
     pub page: i64,
     #[serde(rename = "pages")]
     pub total_pages: i64,
+    pub next_cursor: Option<String>,
+    pub prev_cursor: Option<String>,
 }
 
 impl<T> PaginatedResponse<T> {
@@ -413,7 +440,15 @@ impl<T> PaginatedResponse<T> {
             total,
             page,
             total_pages,
+            next_cursor: None,
+            prev_cursor: None,
         }
+    }
+
+    pub fn with_cursors(mut self, next: Option<String>, prev: Option<String>) -> Self {
+        self.next_cursor = next;
+        self.prev_cursor = prev;
+        self
     }
 }
 
@@ -458,6 +493,7 @@ pub struct InteractionsQueryParams {
     pub method: Option<String>,
     pub from_timestamp: Option<String>,
     pub to_timestamp: Option<String>,
+    pub cursor: Option<String>,
 }
 
 fn default_interactions_limit() -> i64 {
@@ -488,6 +524,8 @@ pub struct InteractionsListResponse {
     pub total: i64,
     pub limit: i64,
     pub offset: i64,
+    pub next_cursor: Option<String>,
+    pub prev_cursor: Option<String>,
 }
 
 /// Migration status
