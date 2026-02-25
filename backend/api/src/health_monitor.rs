@@ -357,4 +357,3 @@ mod tests {
         assert_eq!(health.security_score, 50);
     }
 }
-
