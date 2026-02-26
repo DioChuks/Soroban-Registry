@@ -5,9 +5,10 @@ use axum::{
 };
 
 use crate::{
-    activity_feed_handlers, batch_verify_handlers, breaking_changes,
-    compatibility_testing_handlers, custom_metrics_handlers, deprecation_handlers, handlers, auth,
-    metrics_handler, migration_handlers, simulation_handlers, state::AppState,
+    ab_test_handlers, activity_feed_handlers, batch_verify_handlers, breaking_changes,
+    canary_handlers, compatibility_testing_handlers, custom_metrics_handlers,
+    deprecation_handlers, handlers, auth, metrics_handler, migration_handlers,
+    performance_handlers, simulation_handlers, state::AppState,
 };
 
 pub fn observability_routes() -> Router<AppState> {
@@ -237,14 +238,107 @@ pub fn compatibility_dashboard_routes() -> Router<AppState> {
 
 pub fn canary_routes() -> Router<AppState> {
     Router::new()
+        // Contract-scoped canary endpoints
+        .route(
+            "/api/contracts/:id/canary",
+            get(canary_handlers::list_canaries).post(canary_handlers::create_canary),
+        )
+        // Canary-specific endpoints
+        .route(
+            "/api/canary/:canary_id",
+            get(canary_handlers::get_canary),
+        )
+        .route(
+            "/api/canary/:canary_id/advance",
+            post(canary_handlers::advance_canary),
+        )
+        .route(
+            "/api/canary/:canary_id/rollback",
+            post(canary_handlers::rollback_canary),
+        )
+        .route(
+            "/api/canary/:canary_id/complete",
+            post(canary_handlers::complete_canary),
+        )
+        .route(
+            "/api/canary/:canary_id/metrics",
+            get(canary_handlers::list_canary_metrics)
+                .post(canary_handlers::record_canary_metric),
+        )
 }
 
 pub fn ab_test_routes() -> Router<AppState> {
     Router::new()
+        // Contract-scoped A/B test endpoints
+        .route(
+            "/api/contracts/:id/ab-tests",
+            get(ab_test_handlers::list_ab_tests).post(ab_test_handlers::create_ab_test),
+        )
+        // A/B test-specific endpoints
+        .route(
+            "/api/ab-tests/:test_id",
+            get(ab_test_handlers::get_ab_test),
+        )
+        .route(
+            "/api/ab-tests/:test_id/start",
+            post(ab_test_handlers::start_ab_test),
+        )
+        .route(
+            "/api/ab-tests/:test_id/stop",
+            post(ab_test_handlers::stop_ab_test),
+        )
+        .route(
+            "/api/ab-tests/:test_id/cancel",
+            post(ab_test_handlers::cancel_ab_test),
+        )
+        .route(
+            "/api/ab-tests/:test_id/metrics",
+            post(ab_test_handlers::record_ab_test_metric),
+        )
+        .route(
+            "/api/ab-tests/:test_id/results",
+            get(ab_test_handlers::get_ab_test_results),
+        )
 }
 
 pub fn performance_routes() -> Router<AppState> {
     Router::new()
+        // Contract-scoped performance endpoints
+        .route(
+            "/api/contracts/:id/perf/metrics",
+            get(performance_handlers::list_metrics)
+                .post(performance_handlers::record_metric),
+        )
+        .route(
+            "/api/contracts/:id/perf/anomalies",
+            get(performance_handlers::list_anomalies),
+        )
+        .route(
+            "/api/contracts/:id/perf/alerts",
+            get(performance_handlers::list_alerts),
+        )
+        .route(
+            "/api/contracts/:id/perf/alert-configs",
+            get(performance_handlers::list_alert_configs)
+                .post(performance_handlers::create_alert_config),
+        )
+        .route(
+            "/api/contracts/:id/perf/trends",
+            get(performance_handlers::list_trends),
+        )
+        .route(
+            "/api/contracts/:id/perf/summary",
+            get(performance_handlers::get_performance_summary),
+        )
+        // Alert-specific action endpoints
+        .route(
+            "/api/perf/alerts/:alert_id/acknowledge",
+            post(performance_handlers::acknowledge_alert),
+        )
+        .route(
+            "/api/perf/alerts/:alert_id/resolve",
+            post(performance_handlers::resolve_alert),
+        )
 }
 
 pub fn admin_routes() -> Router<AppState> {

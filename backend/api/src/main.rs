@@ -1,11 +1,13 @@
 #![allow(dead_code, unused)]
 
+mod ab_test_handlers;
 mod aggregation;
 mod analytics;
 mod auth;
 mod batch_verify_handlers;
 mod breaking_changes;
 mod cache;
+mod canary_handlers;
 mod compatibility_testing_handlers;
 mod db_monitoring;
 
@@ -23,6 +25,7 @@ mod health_tests;
 mod metrics;
 mod metrics_handler;
 mod migration_handlers;
+mod performance_handlers;
 mod rate_limit;
 mod release_notes_handlers;
 mod release_notes_routes;
@@ -187,6 +190,9 @@ async fn main() -> Result<()> {
         .merge(routes::health_monitor_routes())
         .merge(routes::admin_routes())
         .merge(routes::compatibility_dashboard_routes())
+        .merge(routes::canary_routes())
+        .merge(routes::ab_test_routes())
+        .merge(routes::performance_routes())
         .merge(release_notes_routes::release_notes_routes())
         .nest("/api", activity_feed_routes::routes())
         .fallback(handlers::route_not_found)
