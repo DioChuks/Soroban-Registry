@@ -1,19 +1,14 @@
-// api/src/detector.rs
-// Static pattern-matching auto-detector for Soroban Rust source code.
 
 use crate::checklist::all_checks;
 use shared::models::{CheckStatus, DetectionMethod};
 use std::collections::HashMap;
 
-/// Result of running the detector on a single check
 #[derive(Debug)]
 pub struct DetectionResult {
     pub status: CheckStatus,
     pub evidence: Option<String>,
 }
 
-/// Run all auto-detectable checks against the provided source code.
-/// Returns a map of check_id → DetectionResult for auto/semi-auto checks only.
 pub fn detect_all(source: &str) -> HashMap<String, DetectionResult> {
     let checks = all_checks();
     let mut results = HashMap::new();
@@ -26,7 +21,7 @@ pub fn detect_all(source: &str) -> HashMap<String, DetectionResult> {
             DetectionMethod::Manual => continue,
         };
 
-        let result = match check.id.as_str() {
+        let result = match check.id {
             "IV-001" => detect_unwrap(&lines),
             "IV-002" => detect_expect(&lines),
             "IV-006" => detect_panic_macro(&lines),
@@ -48,19 +43,18 @@ pub fn detect_all(source: &str) -> HashMap<String, DetectionResult> {
             "EL-001" => detect_events_on_transfers(&lines),
             "DS-001" => detect_contracttype(&lines),
             "SP-001" => detect_datakey_enum(&lines),
+            "SP-005" => detect_raw_storage_keys(&lines), 
             "RL-001" => detect_bounded_loops(&lines),
             _ => detect_generic(&lines, &patterns),
         };
 
-        results.insert(check.id, result);
+        results.insert(check.id.to_string(), result);
     }
 
     results
 }
 
-// ─────────────────────────────────────────────────────────
-// Individual detector functions
-// ─────────────────────────────────────────────────────────
+
 
 fn detect_unwrap(lines: &[&str]) -> DetectionResult {
     for (i, line) in lines.iter().enumerate() {
@@ -506,6 +500,37 @@ fn detect_datakey_enum(lines: &[&str]) -> DetectionResult {
     }
 }
 
+
+fn detect_raw_storage_keys(lines: &[&str]) -> DetectionResult {
+    let vulnerable_patterns = ["symbol_short!(", "Symbol::new(", "&\""];
+    
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim();
+        if is_test_line(line) || t.starts_with("//") {
+            continue;
+        }
+        
+        if t.contains("storage()") && (t.contains(".set(") || t.contains(".get(") || t.contains(".has(")) {
+            for pat in &vulnerable_patterns {
+                if t.contains(pat) {
+                    return DetectionResult {
+                        status: CheckStatus::Failed,
+                        evidence: Some(format!(
+                            "Line {}: Raw string or Symbol used as storage key. Migrate to an exhaustive DataKey enum. Code: {}",
+                            i + 1,
+                            t
+                        )),
+                    };
+                }
+            }
+        }
+    }
+    DetectionResult {
+        status: CheckStatus::Passed,
+        evidence: None,
+    }
+}
+
 fn detect_bounded_loops(lines: &[&str]) -> DetectionResult {
     for (i, line) in lines.iter().enumerate() {
         let t = line.trim();
@@ -634,6 +659,29 @@ pub fn transfer(env: Env, from: Address, amount: i128) {
         assert_eq!(
             detect_panic_macro(&[r#"panic!("bad");"#]).status,
             CheckStatus::Failed
+        );
+    }
+
+    #[test]
+    fn raw_storage_keys_detection_works() {
+        let bad_code = [
+            "pub fn store(env: Env) {",
+            "    env.storage().instance().set(&symbol_short!(\"admin\"), &1);",
+            "}"
+        ];
+        assert_eq!(
+            detect_raw_storage_keys(&bad_code).status,
+            CheckStatus::Failed
+        );
+
+        let good_code = [
+            "pub fn store(env: Env) {",
+            "    env.storage().instance().set(&DataKey::Admin, &1);",
+            "}"
+        ];
+        assert_eq!(
+            detect_raw_storage_keys(&good_code).status,
+            CheckStatus::Passed
         );
     }
 }

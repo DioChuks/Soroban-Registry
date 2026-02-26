@@ -1,12 +1,17 @@
 import { Contract } from '@/lib/api';
 import { CheckCircle2, Clock, ExternalLink, Tag } from 'lucide-react';
 import Link from 'next/link';
+import React from 'react';
+import HealthWidget from './HealthWidget';
+import { useAnalytics } from '@/hooks/useAnalytics';
 
 interface ContractCardProps {
   contract: Contract;
 }
 
 export default function ContractCard({ contract }: ContractCardProps) {
+  //declare logevent function to track clicks on contract cards
+  const { logEvent } = useAnalytics();
   const networkColors = {
     mainnet: 'bg-green-500/10 text-green-600 border-green-500/20',
     testnet: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
@@ -14,11 +19,20 @@ export default function ContractCard({ contract }: ContractCardProps) {
   };
 
   return (
-    <Link href={`/contracts/${contract.id}`}>
+    <Link href={`/contracts/${contract.id}`}
+          //log event when user clicks on contract card
+          onClick={() => 
+          logEvent("contract_viewed",{
+          contract_id: contract.id,
+          contract_name: contract.name,
+          network: contract.network
+        })
+      }>
+
       <div className="group relative overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 transition-all hover:border-blue-500/50 hover:shadow-lg hover:shadow-blue-500/10">
         {/* Gradient overlay on hover */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-purple-500/5 opacity-0 transition-opacity group-hover:opacity-100" />
-        
+
         <div className="relative">
           {/* Header */}
           <div className="flex items-start justify-between mb-3">
@@ -35,7 +49,7 @@ export default function ContractCard({ contract }: ContractCardProps) {
                 {contract.contract_id.slice(0, 8)}...{contract.contract_id.slice(-6)}
               </p>
             </div>
-            
+
             <span className={`px-3 py-1 rounded-full text-xs font-medium border ${networkColors[contract.network]}`}>
               {contract.network}
             </span>
@@ -67,6 +81,11 @@ export default function ContractCard({ contract }: ContractCardProps) {
               )}
             </div>
           )}
+
+          {/* Health Widget */}
+          <div onClick={(e: React.MouseEvent) => e.preventDefault()}>
+            <HealthWidget contract={contract} />
+          </div>
 
           {/* Footer */}
           <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
