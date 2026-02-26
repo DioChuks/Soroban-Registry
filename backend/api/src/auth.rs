@@ -1,3 +1,9 @@
+use axum::{
+    extract::Request,
+    http::{header, StatusCode},
+    middleware::Next,
+    response::Response,
+};
 use chrono::{Duration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
@@ -13,6 +19,10 @@ pub struct AuthClaims {
     pub sub: String,
     pub iat: i64,
     pub exp: i64,
+    #[serde(default)]
+    pub role: Option<String>,
+    #[serde(default)]
+    pub admin: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -122,6 +132,8 @@ impl AuthManager {
             sub: address.to_string(),
             iat,
             exp,
+            role: None,
+            admin: false,
         };
         encode(&Header::default(), &claims, &self.encoding_key).map_err(|_| "jwt_encode_failed")
     }
@@ -133,6 +145,34 @@ impl AuthManager {
             .map(|data| data.claims)
             .map_err(|_| "invalid_token")
     }
+}
+
+fn extract_bearer_token(req: &Request) -> Option<&str> {
+    req.headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+}
+
+fn is_admin(claims: &AuthClaims) -> bool {
+    claims.admin || matches!(claims.role.as_deref(), Some("admin" | "ADMIN" | "Admin"))
+}
+
+pub async fn require_admin(req: Request, next: Next) -> Result<Response, StatusCode> {
+    let Some(token) = extract_bearer_token(&req) else {
+        return Err(StatusCode::UNAUTHORIZED);
+    };
+
+    let auth = AuthManager::from_env().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let claims = auth.validate_jwt(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
+
+    if !is_admin(&claims) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    Ok(next.run(req).await)
 }
 
 fn decode_hex_32(value: &str) -> Option<[u8; 32]> {

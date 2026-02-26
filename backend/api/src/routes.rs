@@ -1,11 +1,12 @@
 use axum::{
+    middleware,
     routing::{get, patch, post},
     Router,
 };
 
 use crate::{
     activity_feed_handlers, batch_verify_handlers, breaking_changes,
-    compatibility_testing_handlers, custom_metrics_handlers, deprecation_handlers, handlers,
+    compatibility_testing_handlers, custom_metrics_handlers, deprecation_handlers, handlers, auth,
     metrics_handler, migration_handlers, simulation_handlers, state::AppState,
 };
 
@@ -84,7 +85,9 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route(
             "/api/contracts/:id/state/:key",
-            get(handlers::get_contract_state).post(handlers::update_contract_state),
+            get(handlers::get_contract_state)
+                .put(handlers::update_contract_state)
+                .post(handlers::update_contract_state),
         )
         .route(
             "/api/contracts/:id/analytics",
@@ -116,7 +119,9 @@ pub fn contract_routes() -> Router<AppState> {
         )
         .route(
             "/api/contracts/:id/state/:key",
-            get(handlers::get_contract_state).post(handlers::update_contract_state),
+            get(handlers::get_contract_state)
+                .put(handlers::update_contract_state)
+                .post(handlers::update_contract_state),
         )
         .route(
             "/api/contracts/:id/analytics",
@@ -139,7 +144,6 @@ pub fn contract_routes() -> Router<AppState> {
             get(handlers::get_impact_analysis),
         )
         .route("/api/contracts/verify", post(handlers::verify_contract))
-        .route("/api/admin/audit-logs", get(handlers::get_all_audit_logs))
         .route(
             "/api/contracts/batch-verify",
             post(batch_verify_handlers::batch_verify_contracts),
@@ -185,7 +189,15 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/deployments/status",
             get(handlers::get_deployment_status),
         )
+        .route(
+            "/api/contracts/:id/deployment-status",
+            get(handlers::get_deployment_status),
+        )
         .route("/api/deployments/green", post(handlers::deploy_green))
+        .route(
+            "/api/contracts/:id/deploy-green",
+            post(handlers::deploy_green),
+        )
         .route(
             "/api/contracts/simulate-deploy",
             post(simulation_handlers::simulate_deploy),
@@ -267,4 +279,11 @@ pub fn ab_test_routes() -> Router<AppState> {
 
 pub fn performance_routes() -> Router<AppState> {
     Router::new()
+}
+
+pub fn admin_routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/admin/audit-logs", get(handlers::get_all_audit_logs))
+        .merge(migration_routes())
+        .route_layer(middleware::from_fn(auth::require_admin))
 }

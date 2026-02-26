@@ -199,6 +199,7 @@ pub struct GraphResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublishRequest {
     pub contract_id: String,
+    pub wasm_hash: String,
     pub name: String,
     pub description: Option<String>,
     pub network: Network,

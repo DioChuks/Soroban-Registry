@@ -3,6 +3,7 @@
 mod aggregation;
 mod analytics;
 mod auth;
+mod batch_verify_handlers;
 mod breaking_changes;
 mod cache;
 mod compatibility_testing_handlers;
@@ -32,20 +33,8 @@ pub mod signing_handlers;
 mod state;
 mod type_safety;
 mod validation;
-// mod auth;
-// mod auth_handlers;
-// mod resource_handlers;
-// mod resource_tracking;
-mod analytics;
-mod breaking_changes;
-mod custom_metrics_handlers;
-mod dependency;
-mod deprecation_handlers;
-pub mod health_monitor;
-pub mod signing_handlers;
 mod simulation;
 mod simulation_handlers;
-mod type_safety;
 
 use anyhow::Result;
 use axum::extract::{Request, State};
@@ -181,7 +170,13 @@ async fn main() -> Result<()> {
 
     let cors = CorsLayer::new()
         .allow_origin(origins)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     // Build router
@@ -190,7 +185,7 @@ async fn main() -> Result<()> {
         .merge(routes::publisher_routes())
         .merge(routes::health_routes())
         .merge(routes::health_monitor_routes())
-        .merge(routes::migration_routes())
+        .merge(routes::admin_routes())
         .merge(routes::compatibility_dashboard_routes())
         .merge(release_notes_routes::release_notes_routes())
         .nest("/api", activity_feed_routes::routes())

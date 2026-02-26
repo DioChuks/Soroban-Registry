@@ -30,7 +30,7 @@ mod integration_tests {
         fn sanitize(&mut self) {
             self.contract_id = normalize_contract_id(&self.contract_id);
             self.name = sanitize_name(&self.name);
-            self.sanitize_description_optional(&mut self.description);
+            sanitize_description_optional(&mut self.description);
             self.publisher_address = normalize_stellar_address(&self.publisher_address);
             self.tags = sanitize_tags(&self.tags);
             if let Some(ref mut url) = self.source_url {
@@ -109,7 +109,7 @@ mod integration_tests {
             if let Some(ref mut name) = self.name {
                 *name = sanitize_name(name);
             }
-            self.sanitize_description_optional(&mut self.description);
+            sanitize_description_optional(&mut self.description);
             if let Some(ref mut tags) = self.tags {
                 *tags = sanitize_tags(tags);
             }
@@ -194,7 +194,7 @@ mod integration_tests {
         fn sanitize(&mut self) {
             self.name = sanitize_name(&self.name);
             self.stellar_address = normalize_stellar_address(&self.stellar_address);
-            self.sanitize_description_optional(&mut self.description);
+            sanitize_description_optional(&mut self.description);
             if let Some(ref mut url) = self.website_url {
                 *url = url.trim().to_string();
             }
