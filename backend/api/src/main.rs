@@ -33,11 +33,11 @@ pub mod request_tracing;
 mod routes;
 pub mod security_log;
 pub mod signing_handlers;
+mod simulation;
+mod simulation_handlers;
 mod state;
 mod type_safety;
 mod validation;
-mod simulation;
-mod simulation_handlers;
 
 use anyhow::Result;
 use axum::extract::{Request, State};

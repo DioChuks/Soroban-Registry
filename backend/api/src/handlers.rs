@@ -13,10 +13,9 @@ use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use shared::{
     pagination::Cursor, AnalyticsEventType, AuditActionType, ChangePublisherRequest, Contract,
-    ContractAnalyticsResponse, ContractChangelogEntry, ContractChangelogResponse,
+    ContractAnalyticsResponse, ContractAuditLog, ContractChangelogEntry, ContractChangelogResponse,
     ContractGetResponse, ContractInteractionResponse, ContractSearchParams, ContractVersion,
     CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
-    ContractAuditLog,
     DeploymentStats, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
     InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
     PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
@@ -1239,13 +1238,11 @@ pub async fn get_publisher_contracts(
     let offset = query.offset.max(0);
 
     // Get total count
-    let total: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM contracts WHERE publisher_id = $1",
-    )
-    .bind(publisher_uuid)
-    .fetch_one(&state.db)
-    .await
-    .map_err(|err| db_internal_error("get publisher contracts count", err))?;
+    let total: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM contracts WHERE publisher_id = $1")
+        .bind(publisher_uuid)
+        .fetch_one(&state.db)
+        .await
+        .map_err(|err| db_internal_error("get publisher contracts count", err))?;
 
     // Fetch paginated results
     let contracts: Vec<Contract> = sqlx::query_as(
