@@ -72,6 +72,18 @@ fn default_audit_limit() -> i64 {
     100
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct PublisherContractsQuery {
+    #[serde(default = "default_contracts_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+fn default_contracts_limit() -> i64 {
+    20
+}
+
 fn extract_ip_address(headers: &HeaderMap) -> String {
     if let Some(forwarded_for) = headers
         .get("x-forwarded-for")
@@ -486,8 +498,8 @@ pub async fn list_contracts(
         shared::SortBy::Relevance => {
             if let Some(ref q) = params.query {
                 format!(
-                    "CASE WHEN c.name ILIKE '{}' THEN 0 
-                          WHEN c.name ILIKE '%{}%' THEN 1 
+                    "CASE WHEN c.name ILIKE '{}' THEN 0
+                          WHEN c.name ILIKE '%{}%' THEN 1
                           ELSE 2 END",
                     q, q
                 )
@@ -1213,7 +1225,8 @@ pub async fn get_publisher(
 pub async fn get_publisher_contracts(
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<Json<Vec<Contract>>> {
+    Query(query): Query<PublisherContractsQuery>,
+) -> ApiResult<Json<PaginatedResponse<Contract>>> {
     let publisher_uuid = Uuid::parse_str(&id).map_err(|_| {
         ApiError::bad_request(
             "InvalidPublisherId",
@@ -1221,14 +1234,34 @@ pub async fn get_publisher_contracts(
         )
     })?;
 
-    let contracts: Vec<Contract> =
-        sqlx::query_as("SELECT * FROM contracts WHERE publisher_id = $1 ORDER BY created_at DESC")
-            .bind(publisher_uuid)
-            .fetch_all(&state.db)
-            .await
-            .map_err(|err| db_internal_error("get publisher contracts", err))?;
+    // Validate and cap limit (max 100)
+    let limit = query.limit.max(1).min(100);
+    let offset = query.offset.max(0);
 
-    Ok(Json(contracts))
+    // Get total count
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM contracts WHERE publisher_id = $1",
+    )
+    .bind(publisher_uuid)
+    .fetch_one(&state.db)
+    .await
+    .map_err(|err| db_internal_error("get publisher contracts count", err))?;
+
+    // Fetch paginated results
+    let contracts: Vec<Contract> = sqlx::query_as(
+        "SELECT * FROM contracts WHERE publisher_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+    )
+    .bind(publisher_uuid)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_internal_error("get publisher contracts", err))?;
+
+    let page = (offset / limit) + 1;
+    let response = PaginatedResponse::new(contracts, total, page, limit);
+
+    Ok(Json(response))
 }
 
 /// Query for contract ABI and OpenAPI (optional version)
