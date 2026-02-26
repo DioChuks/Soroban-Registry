@@ -12,10 +12,11 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde_json::{json, Value};
 use shared::{
-    pagination::Cursor, AnalyticsEventType, ChangePublisherRequest, Contract,
+    pagination::Cursor, AnalyticsEventType, AuditActionType, ChangePublisherRequest, Contract,
     ContractAnalyticsResponse, ContractChangelogEntry, ContractChangelogResponse,
     ContractGetResponse, ContractInteractionResponse, ContractSearchParams, ContractVersion,
     CreateContractVersionRequest, CreateInteractionBatchRequest, CreateInteractionRequest,
+    ContractAuditLog,
     DeploymentStats, InteractionTimeSeriesPoint, InteractionTimeSeriesResponse,
     InteractionsListResponse, InteractionsQueryParams, InteractorStats, Network, NetworkConfig,
     PaginatedResponse, PublishRequest, Publisher, SemVer, TimelineEntry, TopUser, TrendingParams,
@@ -1021,7 +1022,7 @@ pub async fn publish_contract(
     .await
     .map_err(|err| db_internal_error("upsert publisher", err))?;
 
-    let wasm_hash = "placeholder_hash".to_string();
+    let wasm_hash = req.wasm_hash.clone();
     let network_key = req.network.to_string();
     let mut config_map = serde_json::Map::new();
     config_map.insert(
@@ -1296,12 +1297,22 @@ pub async fn get_contract_openapi_json(
 }
 
 // Stubs for upstream added endpoints
+fn planned_not_implemented_response() -> (StatusCode, Json<Value>) {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        Json(json!({
+            "error": "not_implemented",
+            "message": "This endpoint is planned but not yet functional"
+        })),
+    )
+}
+
 pub async fn get_contract_state() -> impl IntoResponse {
-    Json(json!({"state": {}}))
+    planned_not_implemented_response()
 }
 
 pub async fn update_contract_state() -> impl IntoResponse {
-    Json(json!({"success": true}))
+    planned_not_implemented_response()
 }
 
 /// GET /api/contracts/:id/analytics — timeline and top users from contract_interactions (Issue #46).
@@ -1388,7 +1399,7 @@ pub async fn get_contract_analytics(
 }
 
 pub async fn get_trust_score() -> impl IntoResponse {
-    Json(json!({"score": 0}))
+    planned_not_implemented_response()
 }
 
 pub async fn get_contract_dependencies(
@@ -1710,15 +1721,17 @@ pub async fn verify_contract(
 
             record_contract_interaction(
                 &state.db,
-                contract.id,
-                None,
-                "publish_success",
-                None,
-                Some("verify"),
-                None,
-                None,
-                chrono::Utc::now(),
-                &contract.network,
+                ContractInteractionInsert {
+                    contract_id: contract.id,
+                    account: None,
+                    interaction_type: "publish_success",
+                    transaction_hash: None,
+                    method: Some("verify"),
+                    parameters: None,
+                    return_value: None,
+                    timestamp: chrono::Utc::now(),
+                    network: &contract.network,
+                },
             )
             .await
             .map_err(|err| db_internal_error("record verification interaction", err))?;
@@ -2254,11 +2267,11 @@ pub async fn get_all_audit_logs(
 }
 
 pub async fn get_deployment_status() -> impl IntoResponse {
-    Json(json!({"status": "pending"}))
+    planned_not_implemented_response()
 }
 
 pub async fn deploy_green() -> impl IntoResponse {
-    Json(json!({"deployment_id": ""}))
+    planned_not_implemented_response()
 }
 
 pub async fn get_contract_performance() -> impl IntoResponse {

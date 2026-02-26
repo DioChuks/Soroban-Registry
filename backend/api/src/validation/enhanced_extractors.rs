@@ -35,8 +35,8 @@ pub async fn validation_failure_tracking_middleware(
         .headers()
         .get("x-correlation-id")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or_else(|| &Uuid::new_v4().to_string())
-        .to_string();
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let response = next.run(req).await;
 

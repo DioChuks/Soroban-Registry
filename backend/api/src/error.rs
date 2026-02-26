@@ -89,10 +89,11 @@ impl IntoResponse for ApiError {
 }
 
 pub type ApiResult<T> = std::result::Result<T, ApiError>;
+pub type AppError = ApiError;
 
-impl From<sqlx::Error> for AppError {
+impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
         tracing::error!(err = %e, "database error");
-        AppError::InternalServer("Database error".to_string())
+        ApiError::internal("Database error")
     }
 }
