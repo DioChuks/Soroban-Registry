@@ -17,7 +17,6 @@ mod capacity_handlers;
 mod capacity_routes;    
 mod feature_flag_handlers;
 mod feature_flag_routes;  
-
 use anyhow::Result;
 use axum::Router;
 use dotenv::dotenv;
